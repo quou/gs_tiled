@@ -1,0 +1,6 @@
+[submodule "gunslinger"]
+	path = gunslinger
+	url = https://github.com/MrFrenik/gunslinger
+[submodule "gs_xml"]
+	path = gs_xml
+	url = https://github.com/veridisquot/gs_xml
