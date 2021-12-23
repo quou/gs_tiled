@@ -6,6 +6,8 @@
 #define EXPECT(p_, m_) \
 	do { if (!(p_)) { fputs(m_ "\n", stderr); } } while (0)
 
+#define SPRITE_SCALE 2
+
 struct tile {
 	uint32_t id;
 	uint32_t tileset_id;
@@ -157,7 +159,6 @@ void my_init() {
 void my_update() {
 	renderer_begin();
 
-
 	for (uint32_t i = 0; i < gs_dyn_array_size(map.layers); i++) {
 		struct layer* layer = map.layers + i;
 
@@ -171,10 +172,16 @@ void my_update() {
 					int32_t tsyy = tileset->tile_height * ((tile->id - tileset->first_gid) / (tileset->width / tileset->tile_width));
 
 					struct quad quad = {
-						.position = { (float)(x * tileset->tile_width), (float)(y * tileset->tile_height) },
-						.dimentions = { tileset->tile_width, tileset->tile_height },
+						.position = {
+							(float)(x * tileset->tile_width * SPRITE_SCALE),
+							(float)(y * tileset->tile_height * SPRITE_SCALE)
+						},
+						.use_texture = true,
+						.texture_size = { tileset->width, tileset->height },
+						.dimentions = { tileset->tile_width * SPRITE_SCALE, tileset->tile_height * SPRITE_SCALE },
 						.texture = tileset->texture,
-						.rectangle = { tsxx, tsyy, tileset->tile_width, tileset->tile_height }
+						.rectangle = { tsxx, tsyy, tileset->tile_width, tileset->tile_height },
+						.color = { 255, 255, 255 }
 					};
 					renderer_push(&quad);
 				}
