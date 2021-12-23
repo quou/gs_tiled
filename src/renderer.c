@@ -100,6 +100,7 @@ void renderer_begin() {
 
 void renderer_flush() {
 	const gs_vec2 ws = gs_platform_window_sizev(gs_platform_main_window());
+	gs_graphics_set_viewport(&renderer.cb, 0, 0, ws.x, ws.y);
 
 	gs_mat4 camera_mat = gs_mat4_ortho(0.0f, ws.x, ws.y, 0.0f, -1.0f, 1.0f);
 

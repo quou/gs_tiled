@@ -4,7 +4,7 @@
 #include "renderer.h"
 
 #define EXPECT(p_, m_) \
-	do { if (!p_) { fputs(m_ "\n", stderr); } } while (0)
+	do { if (!(p_)) { fputs(m_ "\n", stderr); } } while (0)
 
 struct tile {
 	uint32_t id;
@@ -17,6 +17,8 @@ struct tileset {
 	uint32_t tile_width;
 	uint32_t tile_height;
 	uint32_t first_gid;
+
+	uint32_t width, height;
 };
 
 struct layer {
@@ -64,7 +66,87 @@ void my_init() {
 		gs_xml_node_t* image_node = gs_xml_find_node_child(tileset_node, "image");
 		const char* image_path = gs_xml_find_attribute(image_node, "source")->value.string;
 
+		char full_image_path[256];
+		strcpy(full_image_path, "./data/");
+		strcat(full_image_path, image_path);
+
+		FILE* checker = fopen(full_image_path, "rb"); /* Check that the file exists. */
+		if (!checker) { fprintf(stderr, "Failed to fopen texture file: %s\n"); return; }
+		fclose(checker);
+
+		void* tex_data = NULL;
+		uint32_t w, h, cc;
+		gs_util_load_texture_data_from_file(full_image_path, &w, &h, &cc, &tex_data, false);
+
+		tileset.texture = gs_graphics_texture_create (
+			&(gs_graphics_texture_desc_t){
+				.width = w,
+				.height = h,
+				.format = GS_GRAPHICS_TEXTURE_FORMAT_RGBA8,
+				.min_filter = GS_GRAPHICS_TEXTURE_FILTER_NEAREST,
+				.mag_filter = GS_GRAPHICS_TEXTURE_FILTER_NEAREST,
+				.data = tex_data
+			}
+		);
+
+		tileset.width = w;
+		tileset.height = h;
+
+		gs_free(tex_data);
+
 		gs_dyn_array_push(map.tilesets, tileset);
+	}
+
+	for (gs_xml_node_iter_t it = gs_xml_new_node_child_iter(map_node, "layer"); gs_xml_node_iter_next(&it);) {
+		gs_xml_node_t* layer_node = it.current;
+
+		struct layer layer = { 0 };
+
+		layer.width  = (uint32_t)gs_xml_find_attribute(layer_node, "width")->value.number;
+		layer.height = (uint32_t)gs_xml_find_attribute(layer_node, "height")->value.number;
+
+		gs_xml_node_t* data_node = gs_xml_find_node_child(layer_node, "data");
+
+		const char* encoding = gs_xml_find_attribute(data_node, "encoding")->value.string;
+
+		if (strcmp(encoding, "csv") != 0) {
+			fprintf(stderr, "Only CSV data encoding is supported.\n");
+			return;
+		}
+
+		const char* data_text = data_node->text;
+
+		const char* cd_ptr = data_text;
+
+		layer.tiles = gs_malloc(layer.width * layer.height * sizeof(struct tile));
+
+		for (uint32_t y = 0; y < layer.height; y++) {
+			for (uint32_t x = 0; x < layer.width; x++) {
+				uint32_t gid = (uint32_t)strtod(cd_ptr, NULL);
+				uint32_t tls_id = 0;
+
+				uint32_t closest = 0;
+				for (uint32_t i = 0; i < gs_dyn_array_size(map.tilesets); i++) {
+					if (map.tilesets[i].first_gid <= gid) {
+						if (map.tilesets[i].first_gid > closest) {
+							closest = map.tilesets[i].first_gid;
+							tls_id = i;
+						}
+					}
+				}
+
+				layer.tiles[x + y * layer.width].id = gid;
+				layer.tiles[x + y * layer.width].tileset_id = tls_id;
+
+				while (*cd_ptr && *cd_ptr != ',') {
+					cd_ptr++;
+				}
+
+				cd_ptr++; /* Skip the comma. */
+			}
+		}
+
+		gs_dyn_array_push(map.layers, layer);
 	}
 
 	gs_xml_free(doc);
@@ -75,18 +157,46 @@ void my_init() {
 void my_update() {
 	renderer_begin();
 
-	struct quad quad = {
-		.position = { 0.0f, 0.0f },
-		.dimentions = { 100.0f, 100.0f },
-		.rectangle = { 0 }
-	};
 
-	renderer_push(&quad);
+	for (uint32_t i = 0; i < gs_dyn_array_size(map.layers); i++) {
+		struct layer* layer = map.layers + i;
+
+		for (uint32_t y = 0; y < layer->height; y++) {
+			for (uint32_t x = 0; x < layer->width; x++) {
+				struct tile* tile = layer->tiles + (x + y * layer->width);
+				if (tile->id != 0) {
+					struct tileset* tileset = map.tilesets + tile->tileset_id;
+
+					int32_t tsxx = (tile->id % (tileset->width / tileset->tile_width) - 1) * tileset->tile_width;
+					int32_t tsyy = tileset->tile_height * ((tile->id - tileset->first_gid) / (tileset->width / tileset->tile_width));
+
+					struct quad quad = {
+						.position = { (float)(x * tileset->tile_width), (float)(y * tileset->tile_height) },
+						.dimentions = { tileset->tile_width, tileset->tile_height },
+						.texture = tileset->texture,
+						.rectangle = { tsxx, tsyy, tileset->tile_width, tileset->tile_height }
+					};
+					renderer_push(&quad);
+				}
+			}
+		}
+	}
 
 	renderer_end();
 }
 
 void my_shutdown() {
+	for (uint32_t i = 0; i < gs_dyn_array_size(map.tilesets); i++) {
+		gs_graphics_texture_destroy(map.tilesets[i].texture);
+	}
+
+	for (uint32_t i = 0; i < gs_dyn_array_size(map.layers); i++) {
+		gs_free(map.layers[i].tiles);
+	}
+
+	gs_dyn_array_free(map.layers);
+	gs_dyn_array_free(map.tilesets);
+
 	renderer_deinit();
 }
 
