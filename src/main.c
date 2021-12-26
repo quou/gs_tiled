@@ -27,10 +27,24 @@ struct layer {
 	struct tile* tiles;
 	uint32_t width;
 	uint32_t height;
+
+	gs_color_t tint;
+};
+
+struct object {
+	uint32_t id;
+	int32_t x, y, width, height;
+};
+
+struct object_group {
+	gs_dyn_array(struct object) objects;
+
+	gs_color_t color;
 };
 
 struct map {
 	gs_dyn_array(struct tileset) tilesets;
+	gs_dyn_array(struct object_group) object_groups;
 	gs_dyn_array(struct layer) layers;
 };
 
@@ -103,9 +117,18 @@ void my_init() {
 		gs_xml_node_t* layer_node = it.current;
 
 		struct layer layer = { 0 };
+		layer.tint = (gs_color_t) { 255, 255, 255, 255 };
 
 		layer.width  = (uint32_t)gs_xml_find_attribute(layer_node, "width")->value.number;
 		layer.height = (uint32_t)gs_xml_find_attribute(layer_node, "height")->value.number;
+
+		gs_xml_attribute_t* tint_attrib = gs_xml_find_attribute(layer_node, "tintcolor");
+		if (tint_attrib) {
+			const char* hexstring = tint_attrib->value.string;
+			uint32_t* cols = (uint32_t*)layer.tint.rgba;
+			*cols = (uint32_t)strtol(hexstring + 1, NULL, 16);
+			layer.tint.a = 255;
+		}
 
 		gs_xml_node_t* data_node = gs_xml_find_node_child(layer_node, "data");
 
@@ -151,6 +174,47 @@ void my_init() {
 		gs_dyn_array_push(map.layers, layer);
 	}
 
+	for (gs_xml_node_iter_t it = gs_xml_new_node_child_iter(map_node, "objectgroup"); gs_xml_node_iter_next(&it);) {
+		gs_xml_node_t* object_group_node = it.current;
+
+		struct object_group object_group = { 0 };
+		object_group.color = (gs_color_t) { 255, 255, 255, 255 };
+
+		gs_xml_attribute_t* color_attrib = gs_xml_find_attribute(object_group_node, "color");
+		if (color_attrib) {
+			const char* hexstring = color_attrib->value.string;
+			uint32_t* cols = (uint32_t*)object_group.color.rgba;
+			*cols = (uint32_t)strtol(hexstring + 1, NULL, 16);
+			object_group.color.a = 128;
+		}
+	
+		for (gs_xml_node_iter_t iit = gs_xml_new_node_child_iter(object_group_node, "object"); gs_xml_node_iter_next(&iit);) {
+			gs_xml_node_t* object_node = iit.current;
+
+			struct object object = { 0 };
+			object.id = (int32_t)gs_xml_find_attribute(object_node, "id")->value.number;
+			object.x  = (int32_t)gs_xml_find_attribute(object_node, "x")->value.number;
+			object.y  = (int32_t)gs_xml_find_attribute(object_node, "y")->value.number;
+
+			gs_xml_attribute_t* attrib;
+			if (attrib = gs_xml_find_attribute(object_node, "width")) {
+				object.width = attrib->value.number;
+			} else {
+				object.width = 1;
+			}
+
+			if (attrib = gs_xml_find_attribute(object_node, "height")) {
+				object.height = attrib->value.number;
+			} else {
+				object.height = 1;
+			}
+
+			gs_dyn_array_push(object_group.objects, object);
+		}
+
+		gs_dyn_array_push(map.object_groups, object_group);
+	}
+
 	gs_xml_free(doc);
 
 	renderer_init();
@@ -181,11 +245,30 @@ void my_update() {
 						.dimentions = { tileset->tile_width * SPRITE_SCALE, tileset->tile_height * SPRITE_SCALE },
 						.texture = tileset->texture,
 						.rectangle = { tsxx, tsyy, tileset->tile_width, tileset->tile_height },
-						.color = { 255, 255, 255 }
+						.color = layer->tint
 					};
 					renderer_push(&quad);
 				}
 			}
+		}
+	}
+
+	for (uint32_t i = 0; i < gs_dyn_array_size(map.object_groups); i++) {
+		struct object_group* group = map.object_groups + i;
+
+		for (uint32_t ii = 0; ii < gs_dyn_array_size(map.object_groups[i].objects); ii++) {
+			struct object* object = group->objects + ii;
+
+			struct quad quad = {
+				.position = {
+					(float)(object->x * SPRITE_SCALE),
+					(float)(object->y * SPRITE_SCALE)
+				},
+				.use_texture = false,
+				.dimentions = { object->width * SPRITE_SCALE, object->height * SPRITE_SCALE },
+				.color = group->color
+			};
+			renderer_push(&quad);
 		}
 	}
 

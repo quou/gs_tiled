@@ -80,6 +80,11 @@ void renderer_init() {
 					{ .format = GS_GRAPHICS_VERTEX_ATTRIBUTE_FLOAT,  .name = "use_texture" },
 				},
 				.size = 5 * sizeof(gs_graphics_vertex_attribute_desc_t)
+			},
+			.blend = {
+				.func = GS_GRAPHICS_BLEND_EQUATION_ADD,
+				.src = GS_GRAPHICS_BLEND_MODE_SRC_ALPHA,
+				.dst = GS_GRAPHICS_BLEND_MODE_ONE_MINUS_SRC_ALPHA 
 			}
 		}
 	);
@@ -89,7 +94,8 @@ void renderer_init() {
 }
 
 void renderer_deinit() {
-
+	gs_graphics_shader_destroy(renderer.shader);
+	gs_command_buffer_free(&renderer.cb);
 }
 
 void renderer_begin() {
@@ -244,7 +250,7 @@ void renderer_push(struct quad* quad) {
 
 	renderer.quad_count++;
 
-	if (renderer.quad_count > BATCH_SIZE) {
+	if (renderer.quad_count >= BATCH_SIZE) {
 		renderer_flush();
 	}
 }

@@ -52,9 +52,5 @@ void main() {
 		}
 	}
 
-	if (texture_color.a == 0.0) {
-		discard;
-	}
-
 	color = fs_in.color * texture_color;
 }
